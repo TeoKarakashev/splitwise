@@ -1,3 +1,9 @@
+pub mod app;
+pub mod db;
+pub mod update;
+pub mod messages;
+pub mod view;
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }
