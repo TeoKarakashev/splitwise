@@ -20,10 +20,8 @@ pub struct App {
     pub active_tab: Tab,
 }
 
-impl Sandbox for App {
-    type Message = Message;
-
-    fn new() -> Self {
+impl App {
+    pub fn new() -> Self {
         let db = Database::new().expect("Failed to initialize database");
         let payments = db.get_all_payments().unwrap_or_default();
         let balances = db.get_balances_with_users().unwrap_or_default();
@@ -39,6 +37,14 @@ impl Sandbox for App {
             balances,
             active_tab: Tab::Payments,
         }
+    }
+}
+
+impl Sandbox for App {
+    type Message = Message;
+
+    fn new() -> Self {
+        Self::new() 
     }
 
     fn title(&self) -> String {

@@ -111,7 +111,7 @@ impl Database {
                 amount: row.get(2)?,
                 payee_id: row.get(3)?,
                 is_settled: row.get(4)?,
-                payee_name: row.get(5)?, // Assuming you add a 'payee_name' field to your Payment struct
+                payee_name: row.get(5)?, 
             })
         })?
         .collect::<Result<Vec<_>>>()?;
@@ -129,8 +129,8 @@ impl Database {
         )?;
         let balances = stmt.query_map([], |row| {
             Ok((
-                row.get::<_, String>(0)?, // User name
-                row.get::<_, f64>(1)?,   // Net balance
+                row.get::<_, String>(0)?, 
+                row.get::<_, f64>(1)?,   
             ))
         })?
         .collect::<Result<Vec<_>>>()?;
@@ -138,3 +138,105 @@ impl Database {
     }
     
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+
+    struct TestDb {
+        db: Database,
+        added_users: Vec<i64>,
+    }
+
+    impl TestDb {
+        fn new() -> Self {
+            let db = Database::new().expect("Failed to connect to DB");
+            Self {
+                db,
+                added_users: Vec::new(),
+            }
+        }
+
+        fn add_user(&mut self, name: &str) -> i64 {
+            let user_id = self.db.add_user(name).expect("Failed to add user");
+            self.added_users.push(user_id);
+            user_id
+        }
+
+        fn add_payment(&mut self, description: &str, amount: f64, payee_id: i64) {
+            self.db
+                .add_payment(description, amount, payee_id)
+                .expect("Failed to add payment");
+        }
+
+        fn cleanup(&mut self) {
+            let conn = &mut self.db.conn; 
+        
+            let tx = conn.transaction().expect("Failed to start transaction");
+        
+            for &user_id in &self.added_users {
+                tx.execute(
+                    "DELETE FROM payments WHERE payee_id = ?1",
+                    params![user_id],
+                )
+                .expect("Failed to delete payments for test user");
+            }
+        
+            for &user_id in &self.added_users {
+                tx.execute(
+                    "DELETE FROM users WHERE id = ?1",
+                    params![user_id],
+                )
+                .expect("Failed to delete test user");
+            }
+        
+            tx.commit().expect("Failed to commit cleanup transaction");
+        }
+    }        
+
+    #[test]
+    fn test_add_user() {
+        let mut test_db = TestDb::new();
+        test_db.cleanup();
+        let user_id = test_db.add_user("Alice");
+        assert!(user_id > 0, "User ID should be greater than zero");
+        test_db.cleanup();
+    }
+
+    #[test]
+    fn test_add_payment() {
+        let mut test_db = TestDb::new();
+        test_db.cleanup();
+        let user_id = test_db.add_user("Bob");
+        
+        test_db.add_payment("Lunch", 20.0, user_id);
+
+        let payments = test_db.db.get_all_payments().unwrap();
+        assert_eq!(payments.len(), 1);
+        assert_eq!(payments[0].amount, 20.0);
+        assert_eq!(payments[0].description, "Lunch");
+
+        test_db.cleanup();
+    }
+
+    #[test]
+    fn test_settle_payment() {
+        let mut test_db = TestDb::new();
+        test_db.cleanup();
+        let user_id = test_db.add_user("Charlie");
+        
+        test_db.add_payment("Dinner", 30.0, user_id);
+        test_db
+            .db
+            .settle_payment("Charlie", 30.0)
+            .expect("Failed to settle payment");
+
+        let balances = test_db.db.get_balances_with_users().unwrap();
+        assert_eq!(balances[0].1, 0.0, "Balance should be zero after settlement");
+
+        test_db.cleanup();
+    }
+}
+
